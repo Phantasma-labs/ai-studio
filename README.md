@@ -1,6 +1,6 @@
 # 🎬 Multi-Agent AI Studio
 
-**Live Demo:**  [https://phantasmalabs.com/ai-studio/](https://ai-studio-phlabs.streamlit.app/)
+**Live Demo:**  [ai-studio-phlabs.streamlit.app](https://ai-studio-phlabs.streamlit.app/)
 
 **AI Studio** is an experimental multi-agent creative pipeline that translates narrative concepts into structured, production-ready image generation prompts. It uses LLMs as a creative engine — passing a concept through specialized agents (Story Writer, Screenwriter, Art Consultant, Camera Consultant, Render Artist) — and culminating in fully-formed **Nano Banana Pro** T2I and I2V prompts ready for submission to any generative model.
 
