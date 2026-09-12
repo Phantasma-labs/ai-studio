@@ -1,6 +1,17 @@
 .env
 venv/
+.venv/
 __pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 .DS_Store
+
+# Legacy Streamlit exports
 outputs/*
 !outputs/.gitkeep
+
+# Engine artifacts (renders, checkpoints, timelines)
+data/*
+!data/.gitkeep
