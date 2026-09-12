@@ -1,7 +1,7 @@
 """
 app.py — Cloud entry point for AI Studio.
 Deployed to Streamlit Community Cloud or any remote server.
-Engine is fixed to Google Gemini (gemini-2.5-flash). No local model controls shown.
+Engine is fixed to Google Gemini (gemini-3.5-flash). No local model controls shown.
 """
 import streamlit as st
 import os
@@ -40,7 +40,7 @@ workflow_mode = st.sidebar.radio(
 
 # Fixed engine: Cloud / Gemini 2.5 Flash
 engine_mode = "Cloud"
-model_name = "gemini-2.5-flash"
+model_name = "gemini-3.5-flash"
 
 env_key = os.getenv("GOOGLE_API_KEY")
 key_input = st.sidebar.text_input("Google API Key (leave blank to use .env):", type="password")

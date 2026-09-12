@@ -41,7 +41,7 @@ api_key = None
 if engine_mode == "Local":
     local_model_selector = st.sidebar.selectbox(
         "Intelligence Engine (Local):",
-        ["qwen3-vl:8b", "qwen3.5:9b", "qwen3.5:cloud", "kimi-k2.5:cloud", "gemma3:12b", "gpt-oss:20b"],
+        ["qwen3-vl:8b", "qwen3.5:9b", "qwen3.5:cloud", "kimi-k2.5:cloud", "gemma4:31b-cloud"],
         index=0
     )
     if "qwen3-vl" in local_model_selector:
@@ -50,13 +50,13 @@ if engine_mode == "Local":
         model_name = "qwen3.5:cloud" if "cloud" in local_model_selector else "qwen3.5:9b"
     elif "kimi" in local_model_selector:
         model_name = "kimi-k2.5:cloud"
-    elif "12b" in local_model_selector:
-        model_name = "gemma3:12b"
+    elif "gemma4" in local_model_selector:
+        model_name = "gemma4:31b-cloud"
     else:
-        model_name = "gpt-oss:20b"
+        model_name = "gemma4:31b-cloud"
 else:
     # Cloud option available from local launcher too
-    model_name = "gemini-2.5-flash"
+    model_name = "gemini-3.5-flash"
     env_key = os.getenv("GOOGLE_API_KEY")
     key_input = st.sidebar.text_input("Google API Key (leave blank to use .env):", type="password")
     api_key = key_input if key_input else env_key

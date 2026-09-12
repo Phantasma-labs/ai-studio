@@ -9,8 +9,8 @@
 ## ✨ Features
 
 - **Dual-Engine Architecture**
-  - **Cloud Mode**: Powered by `gemini-2.5-flash` via Google GenAI. Auto-selected when deployed remotely — engine and model controls are hidden automatically.
-  - **Local Mode**: Runs fully offline via Ollama. Supports `qwen3-vl:8b`, `qwen3.5:9b`, `gemma3:12b`, `kimi-k2.5:cloud`, and `gpt-oss:20b`.
+  - **Cloud Mode**: Powered by `gemini-3.5-flash` via Google GenAI. Auto-selected when deployed remotely — engine and model controls are hidden automatically.
+  - **Local Mode**: Runs fully offline via Ollama. Supports `qwen3-vl:8b`, `qwen3.5:9b`, `qwen3.5:cloud`, `kimi-k2.5:cloud`, and `gemma4:31b-cloud`.
 
 - **Workflow Modes**
   - **Storytelling**: A 3-phase pipeline — Pre-Production (story arc + screenplay + art direction) → Cinematography → Production (6-scene T2I + I2V prompts + storyboard consolidation).

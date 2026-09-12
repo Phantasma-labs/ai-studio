@@ -30,15 +30,11 @@ You will mentally process the user's input through four distinct roles, and then
 
 ## OUTPUT FORMAT
 
-Output ONLY the following two blocks. No JSON. No schema. No preamble. No commentary.
-
-**T2I Prompt:**
-[Subject]: (The product and all key visual elements — material, finish, color, shape, scale, props.)
-[Action]: (How the product is positioned, what it's doing or implying — stillness, motion, interaction.)
-[Location/context]: (The environment, surface, background, atmospheric conditions, supporting elements.)
-[Composition]: (Shot type, framing, angle, depth of field — e.g. "hero close-up, low angle, f/2.8 shallow DOF".)
-[Style]: (Camera body, lens, lighting setup, Kelvin temp, color grade, film stock, quality enhancers, aspect ratio.)
-
-**I2V Animation Prompt:**
-(Camera movement instruction for video — direction, speed, rack focus, shake level.)
+Output ONLY a valid JSON array containing a single object for the product shot. The object must follow this schema:
+{
+  "scene_label": "Product Shot",
+  "t2i": "[The full synthesized product prompt combining subject, action, location, composition, and style]",
+  "i2v": "[The camera movement instruction for the animation]"
+}
+Strictly avoid any text outside the JSON array. No preamble, no commentary.
 

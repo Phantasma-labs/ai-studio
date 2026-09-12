@@ -3,6 +3,7 @@ ui_core.py — Shared workflow UI for AI Studio.
 Called by app.py (cloud) and applocal.py (local) with pre-configured engine settings.
 """
 import streamlit as st
+import json
 import re
 from datetime import datetime
 import pipeline
@@ -13,51 +14,65 @@ try:
 except ImportError:
     ResourceExhausted = Exception
 
+def _parse_json_output(text):
+    """Safely parse LLM output as JSON. Returns a list if successful, else the raw text."""
+    try:
+        cleaned = text.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:].strip()
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3].strip()
 
-def _parse_t2i_i2v(block: str):
-    """
-    Extract T2I and I2V text from a single scene block.
-    Returns (t2i_text, i2v_text) — either may be empty string.
-    """
-    t2i_match = re.search(
-        r'\*\*T2I Prompt:\*\*\s*\n(.*?)(?=\n\s*\*\*I2V Animation Prompt:|\Z)',
-        block, re.DOTALL | re.IGNORECASE
-    )
-    i2v_match = re.search(
-        r'\*\*I2V Animation Prompt:\*\*\s*\n(.*?)(?:\n---|\Z)',
-        block, re.DOTALL | re.IGNORECASE
-    )
+        data = json.loads(cleaned)
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            return [data]
+        return text
+    except Exception:
+        return text
 
-    def clean(text):
-        # Strip blockquote markers and excess whitespace
-        lines = [l.lstrip('> ').rstrip() for l in text.strip().splitlines()]
-        return '\n'.join(lines).strip()
+def _split_suggestions(text, count=3):
+    """Split a block of text into N suggestions. Simple split by Option X or A/B/C."""
+    if not text: return [""] * count
+    # Look for markers like 'Option 1:', 'Option A:', etc.
+    pattern = r'(Option\s+[0-9A-Z]:)'
+    parts = re.split(pattern, text, flags=re.IGNORECASE)
 
-    t2i = clean(t2i_match.group(1)) if t2i_match else ""
-    i2v = clean(i2v_match.group(1)) if i2v_match else ""
-    return t2i, i2v
+    suggestions = []
+    # parts[0] might be preamble.
+    # parts[1] = "Option 1:", parts[2] = " content..."
+    for i in range(1, len(parts), 2):
+        label = parts[i].strip()
+        content = parts[i+1].strip() if i+1 < len(parts) else ""
+        suggestions.append(f"{label} {content}")
+
+    if len(suggestions) < count:
+        # Fallback: split by newlines or just return the whole thing
+        return [text] + [""] * (count - 1)
+
+    return suggestions[:count]
 
 
-def _build_per_shot_md(final_prompts: str) -> str:
+def _build_per_shot_md(final_prompts_text: str) -> str:
     """
     Convert the render artist output into a clearly structured markdown string
     with per-shot T2I and I2V sections labelled sh 01, sh 02, etc.
     Used for the MD download deliverable.
     """
-    scene_pattern = re.compile(r'(###\s+Scene\s+\d+[^\n]*)', re.IGNORECASE)
-    parts = scene_pattern.split(final_prompts.strip())
+    scenes = _parse_json_output(final_prompts_text)
 
-    if len(parts) <= 1:
-        # No scene headers found — return raw content
-        return final_prompts
+    if isinstance(scenes, str):
+        # Fallback if JSON parsing failed
+        return scenes
 
     lines = []
-    shot_num = 1
-    for i in range(1, len(parts), 2):
-        header = parts[i].strip().lstrip('#').strip()
-        content = parts[i + 1].strip() if i + 1 < len(parts) else ""
-        t2i, i2v = _parse_t2i_i2v(content)
-        sh_label = f"sh {shot_num:02d}"
+    for i, scene in enumerate(scenes, 1):
+        sh_label = f"sh {i:02d}"
+        header = scene.get("scene_label", f"Scene {i}")
+        t2i = scene.get("t2i", "")
+        i2v = scene.get("i2v", "")
+
         lines.append(f"### {sh_label} — {header}\n")
         if t2i:
             lines.append(f"#### {sh_label} T2I (Text-to-Image)\n")
@@ -66,9 +81,8 @@ def _build_per_shot_md(final_prompts: str) -> str:
             lines.append(f"#### {sh_label} I2V (Image-to-Video)\n")
             lines.append(i2v + "\n")
         if not t2i and not i2v:
-            lines.append(content + "\n")
+            lines.append(f"No output for {sh_label}\n")
         lines.append("---\n")
-        shot_num += 1
 
     return "\n".join(lines)
 
@@ -79,29 +93,20 @@ def render_prompt_blocks(output_text: str):
     st.code() boxes (with built-in copy button).
     Handles both single-scene (Product Shot) and multi-scene (Storytelling) output.
     """
-    # Try to detect multi-scene output by looking for ### Scene headers
-    scene_pattern = re.compile(r'(###\s+Scene\s+\d+[^\n]*)', re.IGNORECASE)
-    parts = scene_pattern.split(output_text.strip())
+    scenes = _parse_json_output(output_text)
 
-    if len(parts) > 1:
-        # Multi-scene: parts alternate as [preamble, header, content, header, content ...]
-        for i in range(1, len(parts), 2):
-            header = parts[i].strip().lstrip('#').strip()
-            content = parts[i + 1].strip() if i + 1 < len(parts) else ""
-            st.markdown(f"#### 🎬 {header}")
-            t2i, i2v = _parse_t2i_i2v(content)
-            if t2i:
-                st.caption("🖼 T2I Prompt — copy and paste into your image model")
-                st.code(t2i, language="markdown")
-            if i2v:
-                st.caption("🎞 I2V Animation Prompt — copy and paste into your video model")
-                st.code(i2v, language="markdown")
-            if not t2i and not i2v:
-                st.code(content, language="markdown")
-            st.divider()
-    else:
-        # Single scene (Product Shot)
-        t2i, i2v = _parse_t2i_i2v(output_text)
+    if isinstance(scenes, str):
+        # Fallback — show raw output
+        st.code(scenes, language="markdown")
+        return
+
+    # If we have a list of scenes, render them
+    for scene in scenes:
+        header = scene.get("scene_label", "Product Shot")
+        st.markdown(f"#### 🎬 {header}")
+        t2i = scene.get("t2i", "")
+        i2v = scene.get("i2v", "")
+
         if t2i:
             st.caption("🖼 T2I Prompt — copy and paste into your image model")
             st.code(t2i, language="markdown")
@@ -109,8 +114,8 @@ def render_prompt_blocks(output_text: str):
             st.caption("🎞 I2V Animation Prompt — copy and paste into your video model")
             st.code(i2v, language="markdown")
         if not t2i and not i2v:
-            # Fallback — show raw output
-            st.code(output_text, language="markdown")
+            st.code("No prompt generated.", language="markdown")
+        st.divider()
 
 
 def init_session_state():
@@ -118,15 +123,17 @@ def init_session_state():
         "phase", "story_arc", "screenplay", "art_suggestions", "camera_suggestions",
         "generation_seed", "concept_input", "art_input", "camera_input",
         "final_art_pref", "final_cam_pref", "final_prompts", "storyboard_prompt",
-        "last_seed", "product_shot_output", "preview_image_bytes", "last_uploaded_image"
+        "last_seed", "product_shot_output", "preview_image_bytes", "last_uploaded_image",
+        "refining_art", "refining_cam"
     ]
     for var in session_vars:
         if var not in st.session_state:
             st.session_state[var] = (
                 0 if var in ["phase", "last_seed"]
                 else (1 if var == "generation_seed"
-                      else ("" if var not in ["preview_image_bytes", "last_uploaded_image"]
-                            else None))
+                      else (False if var in ["refining_art", "refining_cam"]
+                            else ("" if var not in ["preview_image_bytes", "last_uploaded_image"]
+                                    else None)))
             )
     return session_vars
 
@@ -268,23 +275,31 @@ def render_storytelling(engine_mode, model_name, api_key):
     if st.session_state.phase >= 1:
         st.sidebar.divider()
         st.sidebar.subheader("Phase 1.5: Art Direction")
+
+        art_suggestions = _split_suggestions(st.session_state.art_suggestions)
+        art_options = [f"Option {i+1}" for i in range(len(art_suggestions))] + ["Custom"]
+
         art_choice = st.sidebar.radio(
-            "Art Selection:",
-            ["Option 1", "Option 2", "Option 3", "Custom User Input"],
+            "Select Art Base:",
+            art_options,
             disabled=(st.session_state.phase >= 2)
         )
-        art_input = ""
-        if art_choice == "Custom User Input":
-            art_input = st.sidebar.text_area(
-                "Custom Art Preferences:", disabled=(st.session_state.phase >= 2)
-            )
+
+        # Determine base text
+        default_art_text = ""
+        if art_choice != "Custom" and art_suggestions:
+            idx = art_options.index(art_choice)
+            default_art_text = art_suggestions[idx]
+
+        if st.sidebar.button("✏️ Refine Art Details", disabled=(st.session_state.phase >= 2)):
+            st.session_state.refining_art = True
+            st.session_state.art_input = default_art_text
+            st.rerun()
 
         if st.session_state.phase == 1:
             if st.sidebar.button("Confirm Art & Generate Camera Options"):
-                final_art_pref = (
-                    art_input if art_choice == "Custom User Input"
-                    else f"{art_choice} from previous suggestions."
-                )
+                # Use current art_input if refining, else the choice
+                final_art_pref = st.session_state.art_input if st.session_state.refining_art else default_art_text
                 st.session_state.final_art_pref = final_art_pref
                 with st.spinner(f"Camera Consultant is working using {model_name}..."):
                     try:
@@ -297,6 +312,7 @@ def render_storytelling(engine_mode, model_name, api_key):
                         )
                         st.session_state.camera_suggestions = cam_suggs
                         st.session_state.phase = 2
+                        st.session_state.refining_art = False
                     except Exception as e:
                         st.sidebar.error(f"Error during Phase 1.5: {e}")
 
@@ -304,27 +320,66 @@ def render_storytelling(engine_mode, model_name, api_key):
     if st.session_state.phase >= 2:
         st.sidebar.divider()
         st.sidebar.subheader("Phase 2: Cinematography")
+
+        cam_suggestions = _split_suggestions(st.session_state.camera_suggestions)
+        cam_options = [f"Option {i+1}" for i in range(len(cam_suggestions))] + ["Custom"]
+
         cam_choice = st.sidebar.radio(
-            "Camera Selection:",
-            ["Option A", "Option B", "Option C", "Custom User Input"],
+            "Select Camera Base:",
+            cam_options,
             disabled=(st.session_state.phase >= 3)
         )
-        cam_input = ""
-        if cam_choice == "Custom User Input":
-            cam_input = st.sidebar.text_area(
-                "Custom Camera Preferences:", disabled=(st.session_state.phase >= 3)
-            )
+
+        # Determine base text
+        default_cam_text = ""
+        if cam_choice != "Custom" and cam_suggestions:
+            idx = cam_options.index(cam_choice)
+            default_cam_text = cam_suggestions[idx]
+
+        if st.sidebar.button("✏️ Refine Camera Details", disabled=(st.session_state.phase >= 3)):
+            st.session_state.refining_cam = True
+            st.session_state.camera_input = default_cam_text
+            st.rerun()
 
         if st.session_state.phase == 2:
             if st.sidebar.button("Generate Final Prompts"):
-                final_cam_pref = (
-                    cam_input if cam_choice == "Custom User Input"
-                    else f"{cam_choice} from previous suggestions."
-                )
+                # Use current input if refining, else the choice
+                final_cam_pref = st.session_state.camera_input if st.session_state.refining_cam else default_cam_text
                 st.session_state.final_cam_pref = final_cam_pref
                 st.session_state.phase = 3
+                st.session_state.refining_cam = False
 
     # --- Main panel ---
+    if st.session_state.refining_art:
+        st.subheader("🎨 Refine Art Direction")
+        st.info("You are editing the Art Direction. This will be used as the base for cinematography suggestions.")
+        refined_art = st.text_area(
+            "Art Direction Details:",
+            value=st.session_state.art_input,
+            height=300,
+            help="Provide detailed visual descriptions: materials, colors, lighting, and atmosphere."
+        )
+        st.session_state.art_input = refined_art
+        if st.button("Save Art Direction"):
+            st.session_state.refining_art = False
+            st.rerun()
+        st.divider()
+
+    elif st.session_state.refining_cam:
+        st.subheader("🎥 Refine Cinematography")
+        st.info("You are editing the Cinematography. This will be used by the Render Artist to finalize the shots.")
+        refined_cam = st.text_area(
+            "Cinematography Details:",
+            value=st.session_state.camera_input,
+            height=300,
+            help="Provide detailed camera instructions: movement, lens, focal length, and timing."
+        )
+        st.session_state.camera_input = refined_cam
+        if st.button("Save Cinematography"):
+            st.session_state.refining_cam = False
+            st.rerun()
+        st.divider()
+
     if st.session_state.phase == 1:
         st.subheader("Phase 1: Pre-Production Review")
         col1, col2 = st.columns(2)
